@@ -29,10 +29,10 @@ function DesktopNav({ pathname }: { pathname: string | null }) {
             className={cn(
               "flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-muted-foreground transition-all duration-200 hover:text-foreground hover:bg-accent/50",
               pathname === tool.href &&
-                "bg-[#F5F5DC] text-black shadow-md border border-[#E6E1C5]"
+                "bg-black/85 text-white shadow-md"
             )}
           >
-            <tool.icon className="h-4 w-4 text-black" />
+            <tool.icon className={cn("h-4 w-4", pathname === tool.href ? "text-white" : "text-black")} />
             <span>{tool.name}</span>
           </Link>
         ))}
@@ -94,10 +94,10 @@ function MobileNav({
                 onClick={() => setIsOpen(false)}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-4 py-3 text-base font-medium text-muted-foreground transition-all duration-200 hover:text-foreground hover:bg-accent/50",
-                  pathname === tool.href && "bg-[#FFFFFF] text-black border border-[#E6E1C5] shadow-md"
+                  pathname === tool.href && "bg-black/85 text-white shadow-md"
                 )}
               >
-                <tool.icon className="h-5 w-5 text-black" />
+                <tool.icon className={cn("h-5 w-5", pathname === tool.href ? "text-white" : "text-black")} />
                 <span>{tool.name}</span>
               </Link>
             ))}

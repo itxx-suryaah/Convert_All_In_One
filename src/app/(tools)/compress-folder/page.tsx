@@ -243,7 +243,7 @@ export default function CompressFolderPage() {
                 </CardContent>
             </Card>
           </div>
-          <div className="order-1 lg:order-2 lg:col-span-4 w-full lg:max-w-[400px] space-y-5 lg:sticky lg:top-24">
+          <div className="order-1 lg:order-2 lg:col-span-4 w-full lg:w-[400px] space-y-5 lg:sticky lg:top-24">
             <Card>
               <CardHeader>
                   <CardTitle className="flex items-center gap-2"><Settings className="w-5 h-5"/>Settings</CardTitle>
@@ -278,7 +278,7 @@ export default function CompressFolderPage() {
                   </Button>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 text-center mt-4 p-4 rounded-lg bg-blue-950/50">
+                <div className="grid grid-cols-3 gap-4 text-center mt-4 p-4 rounded-lg bg-black/85 text-white">
                     <div>
                         <p className="text-sm text-muted-foreground">Total Original</p>
                         <p className="text-lg font-bold">{(totalOriginalSize / (1024*1024)).toFixed(2)} MB</p>
@@ -305,7 +305,7 @@ export default function CompressFolderPage() {
                     />
                 </div>
 
-                <Button className="w-full" onClick={handleDownloadZip} disabled={isCompressing}>
+                <Button className="w-full bg-black/85 text-white" onClick={handleDownloadZip} disabled={isCompressing}>
                     {isCompressing ? <Loader2 className="animate-spin mr-2"/> : <FolderSync className="mr-2 h-4 w-4"/>}
                     {isCompressing ? 'Compressing...' : 'Compress & Download ZIP'}
                 </Button>

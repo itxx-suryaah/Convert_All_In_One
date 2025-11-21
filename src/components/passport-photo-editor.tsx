@@ -263,7 +263,7 @@ export function PassportPhotoEditor() {
                 const f = e.target.files?.[0];
                 if (f) handleFileAdded([f]);
               }}
-              className="block text-xs"
+              className="block text-xs bg-blue-500 border-2 p-2 cursor-pointer w-[170px]"
             />
           </label>
         </div>
@@ -297,7 +297,7 @@ export function PassportPhotoEditor() {
         </Card>
       </div>
 
-      <div className="lg:col-span-4 order-1 lg:order-2 w-full lg:max-w-[400px]">
+      <div className="lg:col-span-4 order-1 lg:order-2 w-full lg:w-[400px]">
         <Card>
           <CardHeader>
             <CardTitle>Settings & Download</CardTitle>
@@ -389,7 +389,7 @@ export function PassportPhotoEditor() {
                   placeholder="Enter filename"
                 />
               </div>
-              <Button onClick={handleDownload} className="w-full" disabled={isDownloading}>
+              <Button onClick={handleDownload} className="w-full bg-black/85 text-white" disabled={isDownloading}>
                 {isDownloading ? <Loader2 className="animate-spin" /> : <Download />}
                 Crop & Download Photo
               </Button>

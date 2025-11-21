@@ -244,7 +244,7 @@ export default function ConvertPage() {
             </Card>
           )}
         </div>
-        <div className="lg:col-span-4 space-y-5 w-full lg:w-auto">
+        <div className="lg:col-span-4 space-y-5 lg:w-[400px] w-full">
           <Card>
             <CardHeader className="p-4">
               <CardTitle>Settings</CardTitle>
@@ -330,7 +330,7 @@ export default function ConvertPage() {
               <Button
                 onClick={handleConvertAndDownload}
                 disabled={!file || isProcessing}
-                className="w-full h-10 bg-green-600 text-black"
+                className="w-full h-10 bg-black/85 text-white"
               >
                 {isProcessing ? (
                   <>

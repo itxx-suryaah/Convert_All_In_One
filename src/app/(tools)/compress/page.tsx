@@ -235,11 +235,11 @@ export default function CompressPage() {
                     <Button
                       variant="success"
                       size="sm"
-                      className="w-full sm:w-auto"
+                      className="w-full sm:w-auto bg-black/85 text-white"
                       onClick={handleDownload}
                       disabled={isCompressing}
                     >
-                        {isCompressing ? <Loader2 className="w-4 h-4 mr-2 animate-spin"/> : <Download className="w-4 h-4 mr-2"/>}
+                        {isCompressing ? <Loader2 className="w-4 h-4 mr-2 animate-spin bg-black/85 text-white"/> : <Download className="w-4 h-4 mr-2"/>}
                         {isCompressing ? 'Compressing...' : 'Download All'}
                     </Button>
                     <Button
@@ -297,7 +297,7 @@ export default function CompressPage() {
                   </div>
                 )}
                 
-                <div className="grid grid-cols-3 gap-4 text-center mt-4 p-4 rounded-lg bg-blue-950/50">
+                <div className="grid grid-cols-3 gap-4 text-center mt-4 p-4 rounded-lg bg-black/85 text-white">
                     <div>
                         <p className="text-sm text-muted-foreground">Total Original</p>
                         <p className="text-lg font-bold">{(totalOriginalSize / 1024).toFixed(2)} KB</p>

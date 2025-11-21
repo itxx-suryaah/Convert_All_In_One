@@ -193,9 +193,9 @@ export default function ConvertFolderPage() {
                 </CardContent>
             </Card>
           </div>
-          <div className="order-1 lg:order-2 lg:col-span-4 w-full lg:max-w-[400px] space-y-5 lg:sticky lg:top-24">
+          <div className="order-1 lg:order-2 lg:col-span-4 w-full lg:w-[400px] space-y-5 lg:sticky lg:top-24">
             <Card>
-              <CardHeader className="p-4">
+              <CardHeader className="p-4 ">
                   <CardTitle>Conversion & Download</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4 p-4">
@@ -228,7 +228,7 @@ export default function ConvertFolderPage() {
                     disabled={isProcessing}
                   />
                 </div>
-                <Button className="w-full" onClick={handleDownloadZip} disabled={isProcessing}>
+                <Button className="w-full bg-black/85 text-white" onClick={handleDownloadZip} disabled={isProcessing}>
                   {isProcessing ? <Loader2 className="animate-spin mr-2"/> : <FolderGit2 className="mr-2 h-4 w-4"/>}
                   {isProcessing ? 'Packaging...' : 'Convert & Download'}
                 </Button>

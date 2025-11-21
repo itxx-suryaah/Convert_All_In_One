@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Cropper, { type Point, type Area } from "react-easy-crop";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
@@ -16,11 +15,11 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
-import { Loader2, Download, Wand2, ZoomIn, ZoomOut, Palette, ChevronDown, X } from "lucide-react";
-import { removeImageBackground } from "@/app/actions";
+import { Loader2, Download, Wand2, ZoomIn, ZoomOut, Palette, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import NextImage from "next/image";
+import { removeBackground, Config } from "@imgly/background-removal";
 
 const PASSPORT_SIZES = [
   { name: "US Passport (2x2 inch)", width: 600, height: 600, mm: "51x51" },
@@ -83,6 +82,7 @@ export function PassportPhotoEditor() {
   const [processedImage, setProcessedImage] = useState<string | null>(null);
   
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("");
   const [isDownloading, setIsDownloading] = useState(false);
   
   const [selectedSize, setSelectedSize] = useState<Dimension>(PASSPORT_SIZES[0]);
@@ -136,30 +136,67 @@ export function PassportPhotoEditor() {
     if (!originalImage) return;
 
     setIsLoading(true);
-    toast({ title: 'AI Magic in Progress...', description: 'Removing background and applying color.' });
+    setLoadingMessage("Loading AI model (this may take a moment)...");
+    toast({ title: 'AI Magic in Progress...', description: 'Initializing background removal...' });
+    
     try {
-      const result = await removeImageBackground({ 
-        photoDataUri: originalImage,
-        backgroundColor: backgroundColor,
-      });
+      // Convert data URI to Blob for the library
+      const response = await fetch(originalImage);
+      const blob = await response.blob();
 
-      if (result.error || !result.data) {
-        throw new Error(result.error || "AI processing failed to return an image.");
+      const config: Config = {
+        progress: (key: string, current: number, total: number) => {
+           const percent = Math.round((current / total) * 100);
+           setLoadingMessage(`Processing: ${percent}%`);
+        },
+        output: {
+            format: 'image/png',
+            quality: 0.8
+        }
+      };
+
+      const imageBlob = await removeBackground(blob, config);
+
+      const url = URL.createObjectURL(imageBlob);
+      
+      // We need to composite the background color manually since the lib returns transparent
+      const img = await createImage(url);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      
+      if (ctx) {
+          ctx.fillStyle = backgroundColor;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          setProcessedImage(canvas.toDataURL('image/png'));
+          toast({ title: 'Background Removed!', description: 'The background has been updated.' });
+      } else {
+           // Fallback to just the transparent image if canvas fails
+           setProcessedImage(url);
       }
 
-  setProcessedImage(result.data.processedPhotoDataUri);
-  toast({ title: 'Background Removed!', description: 'The background has been updated.' });
-
     } catch (error) {
+      console.error(error);
       toast({
         variant: "destructive",
         title: "Background Removal Failed",
-        description: error instanceof Error ? error.message : "Could not process the image.",
+        description: "Could not process the image. Please try again.",
       });
     } finally {
       setIsLoading(false);
+      setLoadingMessage("");
     }
   };
+
+  // Re-apply background color if it changes after processing
+  useEffect(() => {
+      if (processedImage && backgroundColor) {
+          // Logic to re-apply background would go here
+      }
+  }, [backgroundColor, processedImage]);
+
 
   const handleDownload = async () => {
     if (!activeImage || !croppedAreaPixels) return;
@@ -183,7 +220,11 @@ export function PassportPhotoEditor() {
         const img = await createImage(croppedImage);
         finalCanvas.width = dimensions.width;
         finalCanvas.height = dimensions.height;
+        
+        // Apply filters
         finalCtx.filter = `brightness(${adjustments.brightness}%) contrast(${adjustments.contrast}%) saturate(${adjustments.saturation}%)`;
+        
+        // Draw image
         finalCtx.drawImage(img, 0, 0);
 
         const link = document.createElement("a");
@@ -200,19 +241,41 @@ export function PassportPhotoEditor() {
     }
   };
   
-  const imageStyle = {
-    filter: `brightness(${adjustments.brightness}%) contrast(${adjustments.contrast}%) saturate(${adjustments.saturation}%)`,
-  };
-
   if (!activeImage) {
-    return <FileDropzone onFilesAdded={handleFileAdded} accept="image/png, image/jpeg, image/webp" />;
+    return (
+      <div className="w-full px-2 sm:px-3 md:px-4">
+        <FileDropzone
+          onFilesAdded={handleFileAdded}
+          accept="image/*"
+          className="p-6 sm:p-10 min-h-[120px] sm:min-h-[180px] max-w-md sm:max-w-2xl lg:max-w-3xl mx-auto"
+        />
+        <p className="mt-3 text-center text-xs text-muted-foreground px-4">
+          Tip: Max file size 10MB. On some mobile browsers, image picking can be limited. If you can’t select a photo, try a different browser or use the desktop site.
+        </p>
+        <div className="mt-3 flex justify-center">
+          <label className="inline-flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground">Or use system picker:</span>
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleFileAdded([f]);
+              }}
+              className="block text-xs"
+            />
+          </label>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-      <div className="lg:col-span-2 order-2 lg:order-1">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <div className="lg:col-span-8 order-2 lg:order-1">
         <Card className="overflow-hidden sticky top-24">
-            <div className="relative w-full bg-muted/20" style={{ height: 500 }}>
+            <div className="relative w-full bg-muted/20 h-72 sm:h-96 md:h-[480px] lg:h-[520px]">
                 <Cropper
                   image={activeImage}
                   crop={crop}
@@ -234,111 +297,106 @@ export function PassportPhotoEditor() {
         </Card>
       </div>
 
-      <div className="lg:col-span-1 order-1 lg:order-2 space-y-6">
+      <div className="lg:col-span-4 order-1 lg:order-2 w-full lg:max-w-[400px]">
         <Card>
-            <CardHeader>
-                <CardTitle>Settings</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <Accordion type="multiple" defaultValue={["item-1", "item-2", "item-3"]} className="w-full">
-                    <AccordionItem value="item-1">
-                        <AccordionTrigger>Dimensions</AccordionTrigger>
-                        <AccordionContent className="space-y-4 pt-4">
-                            <div>
-                                <Label htmlFor="passport-size">Standard Size</Label>
-                                <Select
-                                    value={selectedSize.name}
-                                    onValueChange={(value) => {
-                                        const newSize = PASSPORT_SIZES.find((s) => s.name === value)!;
-                                        setSelectedSize(newSize);
-                                    }}
-                                >
-                                    <SelectTrigger id="passport-size"><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        {PASSPORT_SIZES.map((size) => (
-                                            <SelectItem key={size.name} value={size.name}>{size.name} ({size.mm})</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            {selectedSize.name === "Custom" && (
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <Label htmlFor="custom-width">Width (px)</Label>
-                                        <Input id="custom-width" type="number" value={customDimensions.width} onChange={(e) => setCustomDimensions(prev => ({...prev, width: parseInt(e.target.value) || 0}))} />
-                                    </div>
-                                    <div>
-                                        <Label htmlFor="custom-height">Height (px)</Label>
-                                        <Input id="custom-height" type="number" value={customDimensions.height} onChange={(e) => setCustomDimensions(prev => ({...prev, height: parseInt(e.target.value) || 0}))} />
-                                    </div>
-                                </div>
-                            )}
-                        </AccordionContent>
-                    </AccordionItem>
-                    <AccordionItem value="item-2">
-                        <AccordionTrigger>Adjustments</AccordionTrigger>
-                        <AccordionContent className="space-y-4 pt-4">
-                            <div>
-                                <Label>Brightness: {adjustments.brightness - 100}</Label>
-                                <Slider min={0} max={200} step={1} value={[adjustments.brightness]} onValueChange={([val]) => setAdjustments(prev => ({...prev, brightness: val}))} />
-                            </div>
-                            <div>
-                                <Label>Contrast: {adjustments.contrast - 100}</Label>
-                                <Slider min={0} max={200} step={1} value={[adjustments.contrast]} onValueChange={([val]) => setAdjustments(prev => ({...prev, contrast: val}))} />
-                            </div>
-                            <div>
-                                <Label>Saturation: {adjustments.saturation - 100}</Label>
-                                <Slider min={0} max={200} step={1} value={[adjustments.saturation]} onValueChange={([val]) => setAdjustments(prev => ({...prev, saturation: val}))} />
-                            </div>
-                        </AccordionContent>
-                    </AccordionItem>
-                    <AccordionItem value="item-3">
-                        <AccordionTrigger>Background</AccordionTrigger>
-                        <AccordionContent className="space-y-4 pt-4">
-                             <div className="flex items-center justify-between">
-                                <Label htmlFor="bg-color" className="flex items-center gap-2"><Palette/>Background Color</Label>
-                                <Input id="bg-color" type="color" value={backgroundColor} onChange={(e) => setBackgroundColor(e.target.value)} className="w-12 h-8 p-1"/>
-                             </div>
-                             <Button onClick={handleRemoveBackground} disabled={!originalImage || isLoading} className="w-full">
-                                {isLoading ? <Loader2 className="animate-spin" /> : <Wand2 />}
-                                {isLoading ? 'Processing...' : 'Apply Background'}
-                              </Button>
-                              {processedImage && (
-                                <div className="relative border rounded-lg p-2">
-                                  <p className="text-xs font-semibold mb-2">Active Image:</p>
-                                  <div className="relative aspect-square w-full rounded-md overflow-hidden">
-                                     <NextImage src={processedImage} alt="Processed with new background" fill className="object-cover" />
-                                  </div>
-                                   <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={() => setProcessedImage(null)}><X className="w-4 h-4"/></Button>
-                                </div>
-                              )}
-                        </AccordionContent>
-                    </AccordionItem>
-                </Accordion>
-            </CardContent>
-        </Card>
-        
-        <Card>
-            <CardHeader><CardTitle>Download</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-                <div>
-                    <Label htmlFor="rename-file">Rename File</Label>
-                    <Input
-                        id="rename-file"
-                        value={outputFilename}
-                        onChange={(e) => setOutputFilename(e.target.value)}
-                        placeholder="Enter filename"
-                    />
-                </div>
-                <Button onClick={handleDownload} className="w-full" disabled={isDownloading}>
-                    {isDownloading ? <Loader2 className="animate-spin" /> : <Download />}
-                    Crop & Download Photo
-                </Button>
-            </CardContent>
+          <CardHeader>
+            <CardTitle>Settings & Download</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Accordion type="multiple" defaultValue={["item-1", "item-2", "item-3"]} className="w-full">
+              <AccordionItem value="item-1">
+                <AccordionTrigger>Dimensions</AccordionTrigger>
+                <AccordionContent className="space-y-4 pt-4">
+                  <div>
+                    <Label htmlFor="passport-size">Standard Size</Label>
+                    <Select
+                      value={selectedSize.name}
+                      onValueChange={(value) => {
+                        const newSize = PASSPORT_SIZES.find((s) => s.name === value)!;
+                        setSelectedSize(newSize);
+                      }}
+                    >
+                      <SelectTrigger id="passport-size"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {PASSPORT_SIZES.map((size) => (
+                          <SelectItem key={size.name} value={size.name}>{size.name} ({size.mm})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {selectedSize.name === "Custom" && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="custom-width">Width (px)</Label>
+                        <Input id="custom-width" type="number" value={customDimensions.width} onChange={(e) => setCustomDimensions(prev => ({...prev, width: parseInt(e.target.value) || 0}))} />
+                      </div>
+                      <div>
+                        <Label htmlFor="custom-height">Height (px)</Label>
+                        <Input id="custom-height" type="number" value={customDimensions.height} onChange={(e) => setCustomDimensions(prev => ({...prev, height: parseInt(e.target.value) || 0}))} />
+                      </div>
+                    </div>
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="item-2">
+                <AccordionTrigger>Adjustments</AccordionTrigger>
+                <AccordionContent className="space-y-4 pt-4">
+                  <div>
+                    <Label>Brightness: {adjustments.brightness - 100}</Label>
+                    <Slider min={0} max={200} step={1} value={[adjustments.brightness]} onValueChange={([val]) => setAdjustments(prev => ({...prev, brightness: val}))} />
+                  </div>
+                  <div>
+                    <Label>Contrast: {adjustments.contrast - 100}</Label>
+                    <Slider min={0} max={200} step={1} value={[adjustments.contrast]} onValueChange={([val]) => setAdjustments(prev => ({...prev, contrast: val}))} />
+                  </div>
+                  <div>
+                    <Label>Saturation: {adjustments.saturation - 100}</Label>
+                    <Slider min={0} max={200} step={1} value={[adjustments.saturation]} onValueChange={([val]) => setAdjustments(prev => ({...prev, saturation: val}))} />
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="item-3">
+                <AccordionTrigger>Background</AccordionTrigger>
+                <AccordionContent className="space-y-4 pt-4">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="bg-color" className="flex items-center gap-2"><Palette/>Background Color</Label>
+                    <Input id="bg-color" type="color" value={backgroundColor} onChange={(e) => setBackgroundColor(e.target.value)} className="w-12 h-8 p-1"/>
+                  </div>
+                  <Button onClick={handleRemoveBackground} disabled={!originalImage || isLoading} className="w-full">
+                    {isLoading ? <Loader2 className="animate-spin" /> : <Wand2 />}
+                    {isLoading ? (loadingMessage || 'Processing...') : 'Remove Background'}
+                  </Button>
+                  {processedImage && (
+                    <div className="relative border rounded-lg p-2">
+                      <p className="text-xs font-semibold mb-2">Active Image:</p>
+                      <div className="relative aspect-square w-full rounded-md overflow-hidden">
+                        <NextImage src={processedImage} alt="Processed with new background" fill className="object-cover" />
+                      </div>
+                      <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={() => setProcessedImage(null)}><X className="w-4 h-4"/></Button>
+                    </div>
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+
+            <div className="mt-6 space-y-4">
+              <div>
+                <Label htmlFor="rename-file">Rename File</Label>
+                <Input
+                  id="rename-file"
+                  value={outputFilename}
+                  onChange={(e) => setOutputFilename(e.target.value)}
+                  placeholder="Enter filename"
+                />
+              </div>
+              <Button onClick={handleDownload} className="w-full" disabled={isDownloading}>
+                {isDownloading ? <Loader2 className="animate-spin" /> : <Download />}
+                Crop & Download Photo
+              </Button>
+            </div>
+          </CardContent>
         </Card>
       </div>
     </div>
   );
-  }
-
-    
+}

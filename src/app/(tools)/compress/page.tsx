@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -6,6 +5,7 @@ import Image from "next/image";
 import { Download, Loader2, X, Settings } from "lucide-react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
+import imageCompression from "browser-image-compression";
 
 import { ToolHeader } from "../../../components/tool-header";
 import { FileDropzone } from "../../../components/file-dropzone";
@@ -24,7 +24,6 @@ import {
 import { Badge } from "../../../components/ui/badge";
 import { Input } from "../../../components/ui/input";
 import { useToast } from "../../../hooks/use-toast";
-import { compressImage } from "../../../lib/image-compression";
 
 type ProcessedFile = {
   id: string;
@@ -35,6 +34,7 @@ type ProcessedFile = {
   quality: number;
   outputFormat: string;
   outputName: string;
+  compressedBlob?: Blob;
 };
 
 export default function CompressPage() {
@@ -51,34 +51,45 @@ export default function CompressPage() {
   };
   
   useEffect(() => {
-    // This effect runs when the source files, quality, or format changes.
-    // It re-calculates the processed files array.
-    if (files.length > 0) {
-      setProcessedFiles(currentProcessed => {
-        const fileMap = new Map(currentProcessed.map(f => [f.file.name, f]));
+    const processFiles = async () => {
+        if (files.length === 0) {
+            processedFiles.forEach(f => URL.revokeObjectURL(f.previewUrl));
+            setProcessedFiles([]);
+            return;
+        }
+        
+        // We only want to process new files or re-process if settings change significantly
+        // For now, let's just map them and estimate size, actual compression happens on download
+        // OR we can compress previews. Compressing on the fly might be slow for many files.
+        // Let's do a "preview" compression or just estimate.
+        // Actually, browser-image-compression is fast enough for single files, but for many it might lag.
+        // Let's just show original vs estimated.
+        
+        setProcessedFiles(currentProcessed => {
+            const fileMap = new Map(currentProcessed.map(f => [f.file.name, f]));
+    
+            return files.map(file => {
+              const existing = fileMap.get(file.name);
+              // Simple estimation for UI feedback before actual compression
+              const estimatedSize = (file.size) * (quality / 100); 
+              const nameWithoutExtension = file.name.split('.').slice(0, -1).join('.');
+    
+              return {
+                id: existing?.id || `${file.name}-${Date.now()}`,
+                file,
+                previewUrl: existing?.previewUrl || URL.createObjectURL(file),
+                originalSize: file.size,
+                compressedSize: estimatedSize, // This is just an estimate until we actually compress
+                quality,
+                outputFormat,
+                outputName: existing?.outputName || nameWithoutExtension || 'compressed-image',
+              };
+            });
+          });
+    };
 
-        return files.map(file => {
-          const existing = fileMap.get(file.name);
-          const compressedSize = (file.size) * (quality / 100);
-          const nameWithoutExtension = file.name.split('.').slice(0, -1).join('.');
-
-          return {
-            id: existing?.id || `${file.name}-${Date.now()}`,
-            file,
-            previewUrl: existing?.previewUrl || URL.createObjectURL(file),
-            originalSize: file.size,
-            compressedSize: compressedSize,
-            quality,
-            outputFormat,
-            // Preserve existing name on re-renders, otherwise set initial name
-            outputName: existing?.outputName || nameWithoutExtension || 'compressed-image',
-          };
-        });
-      });
-    } else {
-      processedFiles.forEach(f => URL.revokeObjectURL(f.previewUrl));
-      setProcessedFiles([]);
-    }
+    processFiles();
+    
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files, quality, outputFormat]);
 
@@ -100,25 +111,45 @@ export default function CompressPage() {
     toast({ title: "Compressing images...", description: `Processing ${processedFiles.length} files. Please wait.` });
 
     try {
-        if (processedFiles.length === 1) {
-            const pFile = processedFiles[0];
-            const blob = await compressImage(pFile.file, pFile.quality / 100, `image/${pFile.outputFormat}`);
-            if (blob) {
-                saveAs(blob, `${pFile.outputName}.${pFile.outputFormat}`);
-                toast({ title: "Compression complete!", description: "Your image has been downloaded." });
+        const compressedBlobs: { name: string, blob: Blob }[] = [];
+
+        for (const pFile of processedFiles) {
+            const options = {
+                maxSizeMB: 1, // Default max size, maybe expose this?
+                maxWidthOrHeight: 1920, // Limit dimensions for better compression
+                useWebWorker: true,
+                fileType: `image/${outputFormat}` as string,
+                initialQuality: quality / 100,
+            };
+            
+            // If the user selected a format different from original, we might need to handle conversion
+            // browser-image-compression handles this via fileType
+            
+            try {
+                const compressedFile = await imageCompression(pFile.file, options);
+                compressedBlobs.push({ 
+                    name: `${pFile.outputName}.${outputFormat === 'jpeg' ? 'jpg' : outputFormat}`, 
+                    blob: compressedFile 
+                });
+            } catch (err) {
+                console.error(`Error compressing ${pFile.file.name}`, err);
+                toast({ variant: "destructive", title: "Compression Failed", description: `Could not compress ${pFile.file.name}` });
             }
-        } else {
+        }
+
+        if (compressedBlobs.length === 1) {
+            saveAs(compressedBlobs[0].blob, compressedBlobs[0].name);
+            toast({ title: "Compression complete!", description: "Your image has been downloaded." });
+        } else if (compressedBlobs.length > 1) {
             const zip = new JSZip();
-            for (const pFile of processedFiles) {
-                const blob = await compressImage(pFile.file, pFile.quality / 100, `image/${pFile.outputFormat}`);
-                if (blob) {
-                    zip.file(`${pFile.outputName}.${pFile.outputFormat}`, blob);
-                }
-            }
+            compressedBlobs.forEach(item => {
+                zip.file(item.name, item.blob);
+            });
             const zipBlob = await zip.generateAsync({ type: 'blob' });
             saveAs(zipBlob, 'compressed-images.zip');
             toast({ title: "Compression complete!", description: "Your ZIP file has been downloaded." });
         }
+        
     } catch (error) {
         console.error("Error during compression:", error);
         toast({ variant: 'destructive', title: "Error", description: "Could not compress and download the files." });
@@ -141,21 +172,37 @@ export default function CompressPage() {
     <div className="w-full">
       <ToolHeader title={tool.name} description={tool.description} />
       {processedFiles.length === 0 ? (
-        <FileDropzone onFilesAdded={handleFileAdded} multiple />
+        <>
+          <FileDropzone
+            onFilesAdded={handleFileAdded}
+            multiple
+            maxFiles={20}
+            className="p-4 sm:p-10 min-h-[120px] sm:min-h-[180px] max-w-md sm:max-w-2xl lg:max-w-3xl mx-auto"
+          />
+          <p className="mt-3 text-center text-xs text-muted-foreground px-4">
+            Max 20 files. Max 50MB per file. Some mobile browsers may have limited support.
+          </p>
+        </>
       ) : (
         <div className="space-y-8">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
                 {processedFiles.map((p) => (
-                    <Card key={p.id} className="group relative">
+                    <Card key={p.id} className="group relative h-full">
                         <CardContent className="p-0">
                             <div className="aspect-square relative">
-                                <Image src={p.previewUrl} alt={p.file.name} fill className="object-cover rounded-t-lg"/>
+                                <Image
+                                  src={p.previewUrl}
+                                  alt={p.file.name}
+                                  fill
+                                  sizes="(min-width: 1280px) 20vw, (min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw"
+                                  className="object-cover rounded-t-lg"
+                                />
                             </div>
                             <div className="p-3 text-xs">
                                 <p className="font-semibold truncate">{p.file.name}</p>
                                 <p className="text-muted-foreground">
                                     <span className="line-through">{(p.originalSize / 1024).toFixed(1)} KB</span>
-                                    <span className="font-bold text-foreground"> {(p.compressedSize / 1024).toFixed(1)} KB</span>
+                                    <span className="font-bold text-foreground"> ~{(p.compressedSize / 1024).toFixed(1)} KB</span>
                                 </p>
                             </div>
                              <Button
@@ -169,22 +216,42 @@ export default function CompressPage() {
                         </CardContent>
                     </Card>
                 ))}
-                 <FileDropzone onFilesAdded={handleFileAdded} multiple className="min-h-[200px]" />
+                 <FileDropzone
+                   onFilesAdded={handleFileAdded}
+                   multiple
+                   maxFiles={20}
+                   className="p-4 sm:p-6 min-h-[100px] sm:min-h-[140px]"
+                 />
             </div>
 
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                     <Settings className="w-5 h-5"/>
                     <CardTitle className="text-lg">Compression Settings</CardTitle>
                     <Badge variant="secondary" className="ml-2">{processedFiles.length} completed</Badge>
                 </div>
-                <div className="flex items-center gap-2">
-                    <Button variant="success" onClick={handleDownload} disabled={isCompressing}>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                    <Button
+                      variant="success"
+                      size="sm"
+                      className="w-full sm:w-auto"
+                      onClick={handleDownload}
+                      disabled={isCompressing}
+                    >
                         {isCompressing ? <Loader2 className="w-4 h-4 mr-2 animate-spin"/> : <Download className="w-4 h-4 mr-2"/>}
                         {isCompressing ? 'Compressing...' : 'Download All'}
                     </Button>
-                    <Button variant="ghost" onClick={handleClearAll} disabled={isCompressing}><X className="w-4 h-4 mr-2"/>Clear All</Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full sm:w-auto border-2"
+                      onClick={handleClearAll}
+                      disabled={isCompressing}
+                    >
+                      <X className="w-4 h-4 mr-2"/>
+                      Clear All
+                    </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -202,7 +269,6 @@ export default function CompressPage() {
                             <SelectItem value="jpeg">JPEG</SelectItem>
                             <SelectItem value="png">PNG</SelectItem>
                             <SelectItem value="webp">WebP</SelectItem>
-                            <SelectItem value="avif">AVIF</SelectItem>
                           </SelectContent>
                         </Select>
                     </div>
@@ -231,17 +297,17 @@ export default function CompressPage() {
                   </div>
                 )}
                 
-                <div className="grid grid-cols-3 gap-4 text-center mt-4 p-4 rounded-lg bg-muted/30">
+                <div className="grid grid-cols-3 gap-4 text-center mt-4 p-4 rounded-lg bg-blue-950/50">
                     <div>
                         <p className="text-sm text-muted-foreground">Total Original</p>
                         <p className="text-lg font-bold">{(totalOriginalSize / 1024).toFixed(2)} KB</p>
                     </div>
                     <div>
-                        <p className="text-sm text-muted-foreground">Total Compressed</p>
-                        <p className="text-lg font-bold">{(totalCompressedSize / 1024).toFixed(2)} KB</p>
+                        <p className="text-sm text-muted-foreground">Est. Compressed</p>
+                        <p className="text-lg font-bold">~{(totalCompressedSize / 1024).toFixed(2)} KB</p>
                     </div>
                      <div>
-                        <p className="text-sm text-muted-foreground">Total Saved</p>
+                        <p className="text-sm text-muted-foreground">Est. Saved</p>
                         <div className="flex items-center justify-center gap-2">
                             <Badge variant="gradient" className="text-lg">{totalSaved.toFixed(0)}%</Badge>
                         </div>
@@ -254,5 +320,3 @@ export default function CompressPage() {
     </div>
   );
 }
-
-    

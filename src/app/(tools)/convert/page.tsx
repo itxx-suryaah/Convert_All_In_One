@@ -102,6 +102,7 @@ export default function ConvertPage() {
     
     if (!isImageFile(file)) {
         // Placeholder for non-image conversion logic
+        // In a real app, this would call a server action or use a library like jspdf
         setTimeout(() => {
             saveAs(file, getOutputFileNameWithExtension());
             toast({
@@ -140,6 +141,9 @@ export default function ConvertPage() {
           return;
         }
 
+        // Better quality scaling
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
 
         canvas.toBlob(
@@ -159,7 +163,8 @@ export default function ConvertPage() {
             }
             setIsProcessing(false);
           },
-          `image/${outputFormat}`
+          `image/${outputFormat}`,
+          0.92 // High quality default
         );
       };
       img.onerror = () => {
@@ -193,20 +198,30 @@ export default function ConvertPage() {
   };
 
   return (
-    <div className="w-full">
+    <div className="w-full px-2 sm:px-3 md:px-4">
       <ToolHeader title={tool.name} description={tool.description} />
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="lg:col-span-8 space-y-3">
           {!file ? (
-            <FileDropzone onFilesAdded={handleFileAdded} accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip" />
+            <>
+              <FileDropzone
+                onFilesAdded={handleFileAdded}
+                accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip"
+                className="p-6 sm:p-10 min-h-[120px] sm:min-h-[180px] max-w-md sm:max-w-2xl lg:max-w-3xl mx-auto"
+              />
+              <p className="mt-3 text-center text-xs text-muted-foreground px-4">
+            Note: Max file size 50MB. Some mobile browsers restrict file uploads or types. If you can’t pick a file, try a different browser or use the desktop site.
+              </p>
+            </>
           ) : (
             <Card className="overflow-hidden">
-              <div className="relative w-full aspect-video bg-muted/20 flex items-center justify-center">
+              <div className="relative w-full aspect-4/3 md:aspect-video max-h-[46vh] bg-muted/20 flex items-center justify-center">
                 {previewUrl ? (
                     <Image
                       src={previewUrl}
                       alt="Preview"
                       fill
+                      sizes="(min-width:1280px) 66vw, (min-width:1024px) 66vw, 100vw"
                       className="object-contain"
                     />
                 ) : (
@@ -229,12 +244,12 @@ export default function ConvertPage() {
             </Card>
           )}
         </div>
-        <div className="lg:col-span-1 space-y-6">
+        <div className="lg:col-span-4 space-y-5 w-full lg:w-auto">
           <Card>
-            <CardHeader>
+            <CardHeader className="p-4">
               <CardTitle>Settings</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-4 p-4">
               <div>
                 <Label htmlFor="format-select">Convert To</Label>
                 <Select
@@ -315,16 +330,16 @@ export default function ConvertPage() {
               <Button
                 onClick={handleConvertAndDownload}
                 disabled={!file || isProcessing}
-                className="w-full h-10"
+                className="w-full h-10 bg-green-600 text-black"
               >
                 {isProcessing ? (
                   <>
-                    <Loader2 className="animate-spin" />
+                    <Loader2 className="animate-spin text-black" />
                     <span>Converting...</span>
                   </>
                 ) : (
                   <>
-                    <Download className="mr-2 h-4 w-4" />
+                    <Download className="mr-2 h-4 w-4 " />
                     <span>Convert &amp; Download</span>
                   </>
                 )}

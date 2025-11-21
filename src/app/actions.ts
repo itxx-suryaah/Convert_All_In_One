@@ -29,17 +29,4 @@ export async function autoCenterPassportPhoto(
   }
 }
 
-export async function removeImageBackground(input: RemoveBackgroundInput) {
-  try {
-    const result = await removeBackground(input);
-    return { data: result, error: null };
-  } catch (error) {
-    console.error("Error in removeImageBackground:", error);
-    const errorMessage =
-      error instanceof Error ? error.message : "An unknown error occurred.";
-    return {
-      data: null,
-      error: `Failed to remove background. ${errorMessage}`,
-    };
-  }
-}
+// removeImageBackground removed as it is now handled client-side
